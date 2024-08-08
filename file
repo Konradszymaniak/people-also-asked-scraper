@@ -1,0 +1,159 @@
+"""
+PEOPLE ALSO ASK EXTRACTOR BY KONRAD SZYMANIAK (SENIOR SEO CONSULTANT)
+
+
+"""
+
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+import networkx as nx
+import matplotlib.pyplot as plt
+from google.colab import files
+import ipywidgets as widgets
+from IPython.display import display
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+
+def get_paa_questions(query, hl='it'):
+    url = f"https://www.google.co.uk/search?gl=gb&hl=en&adtest=off&pws=0&uule=&num=10&q={query}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, 'html.parser')
+    paa_questions = [question.get_text() for question in soup.find_all('div', class_='related-question-pair')]
+    return paa_questions
+
+def get_related_questions(paa_question, hl='it'):
+    url = f"https://www.google.co.uk/search?gl=gb&hl=en&adtest=off&pws=0&uule=&num=10&q={query}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, 'html.parser')
+    related_questions = [question.get_text() for question in soup.find_all('div', class_='related-question-pair')]
+    return related_questions
+
+def capture_paa_questions(header, query, all_questions, graph, depth=3):
+    print(f"\n{header}: {query}")
+    initial_questions = get_paa_questions(query)
+    print(f"Initial questions for '{query}': {initial_questions}")
+    all_questions[header] = [(query, 0, None, False)]
+    graph.add_node(query, level=0)
+
+    # Recursive fetching of related questions
+    def fetch_questions_recursively(question, current_depth):
+        if current_depth < depth:
+            related_questions = get_related_questions(question)
+            print(f"Related questions for '{question}': {related_questions}")
+            for i, related_question in enumerate(related_questions):
+                highlight = current_depth == 0 and i < 4
+                all_questions[header].append((related_question, current_depth + 1, question, highlight))
+                graph.add_node(related_question, level=current_depth + 1)
+                graph.add_edge(question, related_question)
+                fetch_questions_recursively(related_question, current_depth + 1)
+
+    for i, question in enumerate(initial_questions):
+        highlight = i < 4
+        all_questions[header].append((question, 1, query, highlight))
+        graph.add_edge(query, question)
+        fetch_questions_recursively(question, 1)
+
+def download_csv(button):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "People Also Ask"
+
+
+    bold_font = Font(bold=True)
+    large_font = Font(size=14, bold=True)
+    ws.append(["PEOPLE ALSO ASK EXTRACTOR BY KONRAD SZYMANIAK (SENIOR SEO CONSULTANT)"])
+    ws.cell(row=1, column=1).font = large_font
+
+    link_text = "Get in touch with Konrad via LinkedIn."
+    link_url = "https://www.linkedin.com/in/konrad-digital-marketing-seo-specialist/"
+    ws.append([link_text])
+    cell = ws.cell(row=2, column=1)
+    cell.hyperlink = link_url
+    cell.font = Font(color="0000FF", underline="single", bold=True)
+
+
+    ws.append([""])
+    ws.append(["People Also Ask questions"])
+    ws.append([""])
+
+    blue_fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
+    white_font = Font(color="FFFFFF")
+
+    for header, questions in all_questions.items():
+        if questions:  # Check if there are questions to add
+            ws.append([header])
+            for question in questions:
+                question_text, level, parent, highlight = question
+                indent = '    ' * level
+                cell_value = f"{indent}{question_text}"
+                ws.append([cell_value])
+                if level == 0:
+                    ws.cell(row=ws.max_row, column=1).font = bold_font
+                if highlight:
+                    ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+                    ws.cell(row=ws.max_row, column=1).fill = blue_fill
+
+
+    note_row = ws.max_row + 2
+    ws.merge_cells(start_row=note_row, start_column=2, end_row=note_row, end_column=3)
+    ws.cell(row=note_row, column=2).value = "Highlighted in blue are the first People Also Asked questions for a query"
+    ws.cell(row=note_row, column=2).fill = blue_fill
+    ws.cell(row=note_row, column=2).font = white_font
+
+    excel_filename = "paa_questions - Made By Konrad Szymaniak (Senior SEO Consultant).xlsx"
+    wb.save(excel_filename)
+    files.download(excel_filename)
+
+def create_graph_image(graph):
+    pos = nx.spring_layout(graph)
+    plt.figure(figsize=(20, 20))
+    nx.draw(graph, pos, with_labels=True, node_size=3000, node_color="skyblue", node_shape="o", alpha=0.75, linewidths=40, font_size=10)
+    plt.title("People Also Ask Questions Graph")
+    plt.savefig("paa_graph.png", bbox_inches='tight')
+    plt.show()
+
+def download_image(button):
+    files.download("paa_graph.png")
+
+
+query = input("Enter a search query: ")
+
+all_questions = {"People Also Ask questions": []}
+
+
+graph = nx.DiGraph()
+
+capture_paa_questions("People Also Ask questions", query.strip(), all_questions, graph)
+
+# all_questions
+print(f"All questions: {all_questions}")
+
+# download CSV
+download_button = widgets.Button(description="Download Excel")
+download_button.on_click(download_csv)
+display(download_button)
+
+create_graph_image(graph)
+
+download_image_button = widgets.Button(description="Download Picture")
+download_image_button.on_click(download_image)
+display(download_image_button)
+
+
+
+
+
+
+
+
+
+
